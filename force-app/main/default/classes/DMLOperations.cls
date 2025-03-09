@@ -234,23 +234,65 @@ public with sharing class DMLOperations {
 	 * @param contactsToUpsert List of Contacts to be upserted and linked to accounts.
 	 */
 	public static void upsertAccountsWithContacts(List<Contact> contactsToUpsert) {
-        /*for each (loop) CONTACT in the list, get the corresponding account name that matches the last name of the contact
-          Upsert the account with the proper contact relation
-        */
+        List<Account> newAccs = new List<Account>();
 
-        List<Account> accList = new List<Account>();
+        Set<String> lastName = new Set<String>();
+        for (Contact singleContact : contactsToUpsert) {
+            if (singleContact.LastName != null) {
+                lastName.add(singleContact.LastName);
+            }
+        }
+
+        Map<String, Account> lastNameToAccount = new Map<String, Account>();
+
+        List<Account> accsList = [SELECT Id, Name
+                                       FROM Account
+                                       WHERE Name IN :lastName];
+
+        for (Account singleAcc : accsList) {
+            lastNameToAccount.put(singleAcc.Name, singleAcc);
+        }
 
 		// Loop through each Contact
-        for (Contact contact : contactsToUpsert) {
+        for (Contact singleContact : contactsToUpsert) {
+            if ( singleContact.LastName != null && singleContact.AccountId == null) {
+                    Account matchedAcc = lastNameToAccount.get(singleContact.LastName);
+                    if ( matchedAcc != null) {
+                        singleContact.AccountId = matchedAcc.Id;
+                    } else {
+                        Account newAcc = new Account();
+                        newAcc.Name = singleContact.LastName;
+                        newAccs.add(newAcc);
+                }
+            }
+        }
+        
+        insert newAccs;
+
+        List<Account> accsToInsert = [SELECT Id, Name
+                                       FROM Account
+                                       WHERE Name IN :lastName];
+
+        for (Account singleAcc : newAccs) {
+            lastNameToAccount.put(singleAcc.Name, singleAcc);
+        }
+
+        for (Contact singleContact : contactsToUpsert) {
+            if (singleContact.LastName != null && singleContact.AccountId == null) {
+                Account matchedAcc = lastNameToAccount.get(singleContact.LastName);
+                if (matchedAcc != null) {
+                    singleContact.AccountId = matchedAcc.Id;
+                }
+            }
+        }
+  
+        upsert contactsToUpsert;
 		// Get the account based on the name or create one if it doesn't exist
-                Account newAcc = upsertAccount(contact.LastName);
-                contact.AccountId = newAcc.Id;
+
 		// Link the Contact to its Account using the Account Id
-            accList.add(newAcc);
 		// Upsert the Contacts
         
-	    }
-        upsert(contactsToUpsert);
+	    
     }
 
     /**
